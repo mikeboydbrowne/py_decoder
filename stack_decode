@@ -69,6 +69,7 @@ for french_sentence in french:
           untranslated.append(i)
 
       # getting untranslated phrase groups
+
       phrases = []
       from itertools import groupby
       from operator import itemgetter
@@ -79,19 +80,29 @@ for french_sentence in french:
         else:
           phrases.append(group[0])
 
-      # print phrases
+      # for the remaining untranslated words
+      for j in phrases:
+
+        # if its a phrase
+        if not isinstance(j, int):
+          for l in m:
+            print l
+
+        # if its a singleton word
+        else:
+          print j
 
       # for j in phrases:
       #   print j
 
-      data = [xrange(2, 5), xrange(12, 17), 20]
+      # data = [xrange(2, 5), xrange(12, 17), 20]
 
-      for m in data:
-        if isinstance( m, ( int, long ) )
-          for n in m:
-            print n
-        else:
-          print m
+      # for m in data:
+      #   if not isinstance(m, int):
+      #     for n in m:
+      #       print n
+      #   else:
+      #     print m
 
 
 
