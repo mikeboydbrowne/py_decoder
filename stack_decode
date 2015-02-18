@@ -42,36 +42,44 @@ for french_sentence in french:
 
   # create named tuple so its easier to deal with the values we are working on
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, translated, predecessor, phrase")
-  initial_hypothesis = hypothesis(0.0, lm.begin(), [len(french_sentence) - 1], None, None)
+  initial_hypothesis = hypothesis(0.0, lm.begin(), [False for _ in range(len(french_sentence) - 1, -1, -1)], None, None)
 
   # initialize an array of dictionaries of size n [n = sentence length]
-  stacks = [{} for _ in range(len(french_sentence) - 1, -1, -1)]
+  stacks = [{} for _ in french_sentence]
 
-  # place empty hypothesis into stack 0
+  # place empty hypothesis onto stack 0
   stacks[0][lm.begin()] = initial_hypothesis
 
   # for all stacks 0...n-1  do
-  for stack in enumerate(stacks[:-1]):
+  for _, stack in enumerate(stacks):
 
     # for all hypotheses in stack do
-    for current_hypothesis in sorted(stack.items(), key=lambda h: -h.logprob)[:opts.s]:
+    for current_hypothesis in sorted(stack.itervalues(), key=lambda h: -h.logprob)[:opts.s]:
 
-      # getting untranslated positions
-      untranslated = [];
+      # getting not translated positions
+      untranslated = []
 
-      # for all words in the french sentence do
-      for j in current_hypothesis.translated:
+      # running through positions in the sentence
+      for i in range(len(current_hypothesis.translated) - 1, -1, -1):
 
-        print j
+        # if not translated
+        if not current_hypothesis.translated[i]:
 
-        # if not translated do
-        if current_hypothesis.translated[j]:
+          # add position to the list of untranslated positions
+          untranslated.append(i)
 
-          # add the untranslated position to our list
-          untranslated.append(j)
+      # getting untranslated phrase groups
+      phrases = []
+      from itertools import groupby
+      from operator import itemgetter
+      for key, group in groupby(enumerate(untranslated), lambda (index, item): index - item):
+        group = map(itemgetter(1), group)
+        if len(group) > 1:
+          phrases.append(xrange(group[0], group[-1]))
+        else:
+          phrases.append(group[0])
 
-
-
+      print phrases
 
 
 
