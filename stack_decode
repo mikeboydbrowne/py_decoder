@@ -79,7 +79,21 @@ for french_sentence in french:
         else:
           phrases.append(group[0])
 
-      print phrases
+      # print phrases
+
+      # for j in phrases:
+      #   print j
+
+      data = [xrange(2, 5), xrange(12, 17), 20]
+
+      for m in data:
+        if isinstance( m, ( int, long ) )
+          for n in m:
+            print n
+        else:
+          print m
+
+
 
 
 
