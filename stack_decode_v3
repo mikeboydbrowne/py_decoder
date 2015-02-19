@@ -39,8 +39,6 @@ for french_sentence in french:
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, prev_translated")
   initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0 for _ in range(len(french_sentence), -1, -1)])
 
-  # print len(french_sentence)
-
   # initialize an array of dictionaries of size N+1 (where N is the number of tokens)
   stacks = [{} for _ in french_sentence] + [{}]
 
@@ -53,19 +51,13 @@ for french_sentence in french:
     # loop through stack dictionary contents, starting with the values with the lowest log probability
     for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
 
-      # print current_hypothesis
-
       # getting the array of previously untranslated positions
       translated    = current_hypothesis.prev_translated
       untranslated  = []
 
       for l, k in enumerate(translated):
-        # print l
-        # print k
         if k == 0:
           untranslated.append(l)
-
-      # print untranslated
 
       # getting the phrase groupings
       group = []
@@ -86,19 +78,16 @@ for french_sentence in french:
             first_time = False
       phrases.append(group)
 
-      # print phrases
+      for subphrase in phrases:   # for each phrase grouping
+        for p in subphrase:       # for the starting index in that grouping
+          for q in subphrase:     # for the ending index in that grouping
+            if p <= q:            # provided that the start comes before the end
 
-      for subphrase in phrases:
-        for p in subphrase:
-          for q in subphrase:
-            if p <= q:
               # if the current range of words exists in our translation model
               if french_sentence[p:q] in tm:
 
                 # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
                 for phrase in tm[french_sentence[p:q]]:
-
-                  # print 'Phrase: ' + str(phrase)
 
                   # add the logprob for this phrase to the logprob of the current hypothesis
                   logprob = current_hypothesis.logprob + phrase.logprob
@@ -106,54 +95,29 @@ for french_sentence in french:
                   # extract the current state of the language model
                   current_lm_state = current_hypothesis.lm_state
 
-                  # print current_lm_state
-
                   # find the log prob of each word in the phrase, given the current language models state
                   # then add the logprob into the logprob tally for this phrase
                   for word in phrase.english.split():
-
-                    # print 'Word: ' + str(word)
-                    print 'Inputs:' + str((current_lm_state, word))
-                    print 'Outputs: ' + str(lm.score(current_lm_state, word))
                     (current_lm_state, word_logprob) = lm.score(current_lm_state, word)
                     logprob += word_logprob
 
                   # add the log prob that this is the end of the sentence (once we hit the end)
                   logprob += lm.end(current_lm_state) if q == len(french_sentence) else 0.0
 
+                  # updating the translated bitmap to represent the newly translated words
                   new_translated = translated
                   for g in range(p, q, 1):
-                    # print g
                     new_translated[g] = 1
-
-                  # print new_translated
-
-                  # print phrase
-                  # print current_hypothesis
 
                   # create a new hypothesis value given the current set of data
                   new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated)
 
-
-                  words_translated = q - p  # of words translated in this iteration
-                  total_translated = 0          # getting the total # of words translated
-
                   for i in new_translated:
                     total_translated = total_translated + i
-
-                  # print total_translated
-
-                  # print 'New Total: ' + str(total_translated)
-
-                  # for i in current_hypothesis.prev_translated
-                  #   if current_hypothesis.prev_translated
 
                   # add it to the current stack for the state if that state's stack is empty, or if the log prob is lower
                   if current_lm_state not in stacks[total_translated] or stacks[total_translated][current_lm_state].logprob < logprob: # second case is recombination
                     stacks[total_translated][current_lm_state] = new_hypothesis
-
-    # if total_translated == 6:
-    #   print 'Current guess' + str(current_hypothesis) + '\n'
 
   # take the lowest absolute log prob value as our winnar
   winner = max(stacks[-2].itervalues(), key=lambda h: h.logprob)
@@ -168,6 +132,3 @@ for french_sentence in french:
     tm_logprob = extract_tm_logprob(winner)
     sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
-
-for i, stack in enumerate(stacks):
-  print 'Stack[' + str(i) + '] contains: ' + str(stacks[i]) + '\n\n\n'

@@ -66,6 +66,8 @@ for french_sentence in french:
             # extract the current state of the language model
             current_lm_state = current_hypothesis.lm_state
 
+            print current_lm_state
+
             # find the log prob of each word in the phrase, given the current language models state
             # then add the logprob into the logprob tally for this phrase
             for word in phrase.english.split():
@@ -94,3 +96,6 @@ for french_sentence in french:
     tm_logprob = extract_tm_logprob(winner)
     sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+
+for i, stack in enumerate(stacks):
+  print 'Stack[' + str(i) + '] contains: ' + str(stacks[i]) + '\n\n\n'
