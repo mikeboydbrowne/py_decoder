@@ -44,6 +44,8 @@ for french_sentence in french:
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, translated, predecessor, phrase")
   initial_hypothesis = hypothesis(0.0, lm.begin(), [False for _ in range(len(french_sentence) - 1, -1, -1)], None, None)
 
+  print len(french_sentence)
+
   # initialize an array of dictionaries of size n [n = sentence length]
   stacks = [{} for _ in french_sentence]
 
@@ -74,10 +76,13 @@ for french_sentence in french:
       from operator import itemgetter
       for key, group in groupby(enumerate(untranslated), lambda (index, item): index - item):
         group = map(itemgetter(1), group)
+        print group
         if len(group) > 1:
           phrases.append(xrange(group[0], group[-1]))
         else:
           phrases.append(group[0])
+
+      print phrases
 
       # for the remaining untranslated words or phrases
       for j in phrases:
@@ -96,9 +101,9 @@ for french_sentence in french:
 
               # number of words translated in previous iteration
               numTranslated = 0
-              for p in current_hypothesis.translated
-                if p
-                numTranslated += 1
+              for p in current_hypothesis.translated:
+                if current_hypothesis.translated[p]:
+                  numTranslated += 1
 
               # is the resulting subset phrase in the translation model?
               if french_sentence[l:m] in tm:
@@ -130,10 +135,14 @@ for french_sentence in french:
                   new_hypothesis = hypothesis(logprob, current_lm_state, new_translated, current_hypothesis, phrase)
 
                   # add hypothesis to the stack that represents the number of words translated
-                  if current_lm_state not in stacks[]
+                  if current_lm_state not in stacks[numTranslated + numWords] or stacks[j][current_lm_state].logprob < logprob:
+                    stacks[numTranslated + numWords][current_lm_state] = new_hypothesis
+
+
         # if its a singleton word
         else:
           print j
+
 
     #       # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
     #       for phrase in tm[french_sentence[i:j]]:
