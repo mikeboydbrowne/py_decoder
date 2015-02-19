@@ -91,6 +91,15 @@ for french_sentence in french:
             # for every other word position in the phrase
             for m in j:
 
+              # number of words tranlsted in this iteration
+              numWords = l - m + 1
+
+              # number of words translated in previous iteration
+              numTranslated = 0
+              for p in current_hypothesis.translated
+                if p
+                numTranslated += 1
+
               # is the resulting subset phrase in the translation model?
               if french_sentence[l:m] in tm:
 
@@ -103,14 +112,25 @@ for french_sentence in french:
                   # get the current state of the language model
                   current_lm_state = current_hypothesis.lm_state
 
-
                   # for word in phrase.english.split():
                   #   (current_lm_state,word_logprob) = lm.score(current_lm_state, wor)
                   #   logprob += word_logprob
 
+                  # adding the probability that it's the end of the sentence
                   logprob += lm.end(current_lm_state) if l == len(french_sentence) else 0.0
 
-                  new_hypothesis = hypothesis(logprob, current_lm_state, [[NEED TO ADD ARRAY]], current_hypothesis, phrase)
+                  # getting the array of words in the french sentence that are translated
+                  new_translated = current_hypothesis.translated;
+
+                  # altering newly translated words' state in array
+                  for n in range(m, l, -1):
+                    new_translated[n] = True
+
+                  # creating a new hypothesis
+                  new_hypothesis = hypothesis(logprob, current_lm_state, new_translated, current_hypothesis, phrase)
+
+                  # add hypothesis to the stack that represents the number of words translated
+                  if current_lm_state not in stacks[]
         # if its a singleton word
         else:
           print j
