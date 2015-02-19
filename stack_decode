@@ -69,7 +69,6 @@ for french_sentence in french:
           untranslated.append(i)
 
       # getting untranslated phrase groups
-
       phrases = []
       from itertools import groupby
       from operator import itemgetter
@@ -80,43 +79,41 @@ for french_sentence in french:
         else:
           phrases.append(group[0])
 
-      # for the remaining untranslated words
+      # for the remaining untranslated words or phrases
       for j in phrases:
 
         # if its a phrase
         if not isinstance(j, int):
-          for l in m:
-            print l
 
+          # for every word position in the phrase
+          for l in j:
+
+            # for every other word position in the phrase
+            for m in j:
+
+              # is the resulting subset phrase in the translation model?
+              if french_sentence[l:m] in tm:
+
+                # for each of the translations in the translation model:
+                for phrase in tm[french_sentence[l:m]]:
+
+                  # add the logprob for this phrase to that of the current hypothesis
+                  logprob = current_hypothesis.logprob + phrase.logprob
+
+                  # get the current state of the language model
+                  current_lm_state = current_hypothesis.lm_state
+
+
+                  # for word in phrase.english.split():
+                  #   (current_lm_state,word_logprob) = lm.score(current_lm_state, wor)
+                  #   logprob += word_logprob
+
+                  logprob += lm.end(current_lm_state) if l == len(french_sentence) else 0.0
+
+                  new_hypothesis = hypothesis(logprob, current_lm_state, [[NEED TO ADD ARRAY]], current_hypothesis, phrase)
         # if its a singleton word
         else:
           print j
-
-      # for j in phrases:
-      #   print j
-
-      # data = [xrange(2, 5), xrange(12, 17), 20]
-
-      # for m in data:
-      #   if not isinstance(m, int):
-      #     for n in m:
-      #       print n
-      #   else:
-      #     print m
-
-
-
-
-
-
-    # # loop through stack dictionary contents, starting with the values with the lowest log probability
-    # for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
-
-    #   # loop over each word within the current range, that is (current-pos+1 -> length+1)
-    #   for j in xrange(i+1,len(french_sentence)+1):
-
-    #     # if the current range of words exists in our translation model
-    #     if french_sentence[i:j] in tm:
 
     #       # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
     #       for phrase in tm[french_sentence[i:j]]:
