@@ -38,11 +38,39 @@ for french_sentence in french:
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
 
-  # create named tuple so its easier to deal with the values we are working on
-  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, prev_translated, order_trans")
-  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0 for _ in range(len(french_sentence) - 1, -1, -1)], [])
+  future_cost = {}
 
-  # print len(french_sentence)
+
+  # calculating future cost
+  for length in range(0, len(french_sentence), 1):
+    for start in range(0, len(french_sentence) + 1 - length, 1):
+      end = start + length
+      future_cost[(start,end)] = float("inf")
+      if french_sentence[start:end] in tm:
+        min_cost = 100000.0
+        for phrase in tm[french_sentence[start:end]]:
+          if abs(phrase.logprob) < abs(min_cost):
+            min_cost = phrase.logprob
+        future_cost[(start,end)] = min_cost
+
+      for i in range(start, end-1, 1):
+        if french_sentence[start:i] in tm and french_sentence[i: end] in tm:
+          min_cost_first  = float('inf')
+          min_cost_last    = float('inf')
+          for phrase in tm[french_sentence[start:i]]:
+            if abs(phrase.logprob) < abs(min_cost_first):
+              min_cost = phrase.logprob
+          for phrase in tm[french_sentence[i: end]]:
+            if abs(phrase.logprob) < abs(min_cost_last):
+              min_cost = phrase.logprob
+          if min_cost_first + min_cost_last < future_cost[(start,end)]:
+            future_cost[start,end] = min_cost_first + min_cost_last
+
+  print future_cost
+
+  # create named tuple so its easier to deal with the values we are working on
+  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, prev_translated, futureCost")
+  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0 for _ in range(len(french_sentence) - 1, -1, -1)], 0.0)
 
   # initialize an array of dictionaries of size N+1 (where N is the number of tokens)
   stacks = [{} for _ in french_sentence] + [{}]
@@ -53,24 +81,16 @@ for french_sentence in french:
   # loop through all but the last stack in the array of stacks (so for each word)
   for i, stack in enumerate(stacks[:-1]):
 
-    # print '\n\n\n\n\nIterating through stack #' + str(i) + '\n\n\n\n\n'
-
     # loop through stack dictionary contents, starting with the values with the lowest log probability
-    for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
-
-      # print current_hypothesis
+    for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob + h.futureCost)[:opts.s]: # prune
 
       # getting the array of previously untranslated positions
       translated    = current_hypothesis.prev_translated
       untranslated  = []
 
       for l, k in enumerate(translated):
-        # print l
-        # print k
         if k == 0:
           untranslated.append(l)
-
-      # print 'Untranslated tokens: ' + str(untranslated)
 
       # getting the phrase groupings
       group = []
@@ -118,7 +138,6 @@ for french_sentence in french:
 
                   # extract the current state of the language model
                   current_lm_state = current_hypothesis.lm_state
-                  translation_order = copy.deepcopy(current_hypothesis.order_trans)
                   new_translated = copy.deepcopy(translated)
 
                   # print 'BEFORE - Phrase to translate: ' + str(french_sentence[p : q + 1])
@@ -138,13 +157,10 @@ for french_sentence in french:
                   # print 'AFTER - Old Logprob + Phrase Logprob + Word Logprob ' + str(logprob)
 
                   # Adding the words that were translated
-                  translation_group = []
                   for g in range(p, q + 1, 1):
                     new_translated[g] = 1
-                    translation_group.append(g)
 
-                  # {phrase.english : translation_group}
-                  translation_order.append((phrase.english, translation_group))
+                  futureCost = future_cost[(p, q+1)]
 
                   # max_position = 0
                   # for z in translation_order:
@@ -166,7 +182,7 @@ for french_sentence in french:
                   # print 'AFTER - Order of words translated: ' + str(translation_order)
 
                   # create a new hypothesis value given the current set of data
-                  new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, translation_order)
+                  new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, futureCost)
 
                   total_translated = 0
                   for i in new_translated:
