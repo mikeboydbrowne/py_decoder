@@ -30,7 +30,6 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 
-# print '\n\n\n\n'
 for french_sentence in french:
   # The following code implements a monotone decoding
   # algorithm (one that doesn't permute the target phrases).
@@ -40,33 +39,64 @@ for french_sentence in french:
 
   future_cost = {}
 
-
   # calculating future cost
-  for length in range(0, len(french_sentence), 1):
-    for start in range(0, len(french_sentence) + 1 - length, 1):
+  for length in range(1, len(french_sentence) + 1, 1):
+    for start in range(0, len(french_sentence) + 2 - length, 1):
       end = start + length
       future_cost[(start,end)] = float("inf")
       if french_sentence[start:end] in tm:
-        min_cost = 100000.0
+
+        # getting future cost
+        phrase_fcost = 0
         for phrase in tm[french_sentence[start:end]]:
-          if abs(phrase.logprob) < abs(min_cost):
-            min_cost = phrase.logprob
-        future_cost[(start,end)] = min_cost
+          # adding tm cost
+          phrase_fcost = phrase.logprob
 
-      for i in range(start, end-1, 1):
-        if french_sentence[start:i] in tm and french_sentence[i: end] in tm:
+          # adding lm cost
+          lm_state_holder = lm.begin()
+          for word in phrase.english.split():
+            (lm_state_holder, word_logprob) = lm.score(lm_state_holder, word)
+            phrase_fcost += word_logprob
+
+          # comparing to current cost
+          if abs(phrase_fcost) < abs(future_cost[start, end]):
+            min_cost = phrase_fcost
+
+      for i in range(start, end, 1):
+        if french_sentence[start : i] in tm and french_sentence[i + 1 : end] in tm:
           min_cost_first  = float('inf')
-          min_cost_last    = float('inf')
-          for phrase in tm[french_sentence[start:i]]:
-            if abs(phrase.logprob) < abs(min_cost_first):
-              min_cost = phrase.logprob
-          for phrase in tm[french_sentence[i: end]]:
-            if abs(phrase.logprob) < abs(min_cost_last):
-              min_cost = phrase.logprob
-          if min_cost_first + min_cost_last < future_cost[(start,end)]:
-            future_cost[start,end] = min_cost_first + min_cost_last
+          min_cost_last   = float('inf')
+          firstphrase_fcost = 0
+          lastphrase_fcost = 0
 
-  print future_cost
+          for phrase in tm[french_sentence[start : i]]:
+            # getting tm cost
+            firstphrase_fcost = phrase.logprob
+
+            # getting lm cost
+            lm_state_holder = lm.begin()
+            for word in phrase.english.split():
+              (lm_state_holder, word_logprob) = lm.score(lm_state_holder, word)
+              firstphrase_fcost += word_logprob
+
+            if abs(firstphrase_fcost) < abs(min_cost_first):
+              min_cost_first = firstphrase_fcost
+
+          for phrase in tm[french_sentence[i + 1 : end]]:
+            # getting tm cost
+            lastphrase_fcost = phrase.logprob
+
+            # getting lm cost
+            lm_state_holder = lm.begin()
+            for word in phrase.english.split():
+              (lm_state_holder, word_logprob) = lm.score(lm_state_holder, word)
+              lastphrase_fcost += word_logprob
+
+            if abs(lastphrase_fcost) < abs(min_cost_first):
+              min_cost_last = lastphrase_fcost
+
+          if min_cost_first + min_cost_last < future_cost[(start,end)]:
+            future_cost[(start,end)] = min_cost_first + min_cost_last
 
   # create named tuple so its easier to deal with the values we are working on
   hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, prev_translated, futureCost")
@@ -82,7 +112,7 @@ for french_sentence in french:
   for i, stack in enumerate(stacks[:-1]):
 
     # loop through stack dictionary contents, starting with the values with the lowest log probability
-    for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob + h.futureCost)[:opts.s]: # prune
+    for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -(h.logprob  + h.futureCost))[:opts.s]: # prune
 
       # getting the array of previously untranslated positions
       translated    = current_hypothesis.prev_translated
@@ -111,9 +141,7 @@ for french_sentence in french:
             first_time = False
       phrases.append(group)
 
-      # print len(french_sentence)
-      # print phrases
-
+      # running through the phrase groupings
       for subphrase in phrases:
         for p in subphrase:
           for q in subphrase:
@@ -122,29 +150,14 @@ for french_sentence in french:
               # if the current range of words exists in our translation model
               if french_sentence[p:q + 1] in tm:
 
-                # print 'Phrase to translate: ' + str(french_sentence[p : q + 1])
-                # print 'Phrase from: ' + str(p) + ' to: ' + str(q+1) + ' is in our translation model'
-
                 # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
                 for phrase in tm[french_sentence[p:q + 1]]:
-
-                  # print 'The phrase: ' + str(phrase) + ' comes between indices: ' + str(p) + ' and ' + str(q)
-
-                  # if q + 1 - p > len(phrase.english.split()):
-                  #   print '\n\n\nTHE ENGLISH PHRASE IS SHORTER THAN THE FRENCH PHRASE!\n\n\n'
-
                   # add the logprob for this phrase to the logprob of the current hypothesis
                   logprob = current_hypothesis.logprob + phrase.logprob
 
                   # extract the current state of the language model
                   current_lm_state = current_hypothesis.lm_state
                   new_translated = copy.deepcopy(translated)
-
-                  # print 'BEFORE - Phrase to translate: ' + str(french_sentence[p : q + 1])
-                  # print 'BEFORE - Order of words translated: ' + str(translation_order)
-                  # print 'BEFORE - Words in french translated: ' + str(new_translated)
-                  # print 'BEFORE - Old Logprob + Phrase Logprob: ' + str(logprob)
-
 
                   # find the log prob of each word in the phrase, given the current language models state
                   # then add the logprob into the logprob tally for this phrase
@@ -154,159 +167,26 @@ for french_sentence in french:
 
                   logprob += lm.end(current_lm_state) if q + 1 == len(french_sentence) else 0.0
 
-                  # print 'AFTER - Old Logprob + Phrase Logprob + Word Logprob ' + str(logprob)
-
                   # Adding the words that were translated
                   for g in range(p, q + 1, 1):
                     new_translated[g] = 1
 
-                  futureCost = future_cost[(p, q+1)]
-
-                  # max_position = 0
-                  # for z in translation_order:
-                  #   if z > max_position:
-                  #     max_position = z
-
-                  # if max_position != 0:
-                  #   max_position += 1
-
-                  # print 'Length of translated phrase: ' + str(len(phrase.english.split()))
-                  # print 'Translated phrase: ' + str(phrase.english)
-
-                  # # for w in phrase.english.split():
-                  # #   translation_order.append(max_position)
-                  # #   # max_position += 1
-
-
-                  # print 'AFTER - Words in french translated: ' + str(new_translated)
-                  # print 'AFTER - Order of words translated: ' + str(translation_order)
+                  new_futureCost = future_cost[(p, q+1)]
 
                   # create a new hypothesis value given the current set of data
-                  new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, futureCost)
+                  new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, new_futureCost)
 
                   total_translated = 0
                   for i in new_translated:
                     total_translated = total_translated + i
 
-                  # print 'AFTER - Total # of words translated: ' + str(total_translated)
-                  # print '\n\n'
-
                   # add it to the current stack for the state if that state's stack is empty, or if the log prob is lower
-                  if current_lm_state not in stacks[total_translated] or stacks[total_translated][current_lm_state].logprob < logprob: # second case is recombination
+                  if current_lm_state not in stacks[total_translated] or (stacks[total_translated][current_lm_state].logprob + stacks[total_translated][current_lm_state].futureCost) < (logprob + new_futureCost): # second case is recombination
                     stacks[total_translated][current_lm_state] = new_hypothesis
-
-              # else:
-
-                # print 'Phrase to translate: ' + str(french_sentence[p : q + 1])
-                # print 'Phrase from: ' + str(p) + ' to: ' + str(q+1) + ' is NOT in our translation model'
-
-  #               # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
-  #               for phrase in tm[french_sentence[p:q + 1]]:
-
-  #                 # print 'The phrase: ' + str(phrase) + 'comes between indices: ' + str(p) + ' and ' + str(q)
-
-  #                 # add the logprob for this phrase to the logprob of the current hypothesis
-  #                 logprob = current_hypothesis.logprob + phrase.logprob
-
-  #                 # extract the current state of the language model
-  #                 current_lm_state = current_hypothesis.lm_state
-  #                 translation_order = copy.deepcopy(current_hypothesis.order_trans)
-  #                 new_translated = copy.deepcopy(translated)
-
-  #                 # find the log prob of each word in the phrase, given the current language models state
-  #                 # then add the logprob into the logprob tally for this phrase
-  #                 for word in phrase.english.split():
-
-  #                   (current_lm_state, word_logprob) = lm.score(current_lm_state, word)
-  #                   # logprob += word_logprob
-
-  #                 # add the log prob that this is the end of the sentence (once we hit the end)
-  #                 logprob += lm.end(current_lm_state) if q == len(french_sentence) else 0.0
-
-  #                 new_translated = copy.deepcopy(translated)
-
-  #                 for g in range(q + 1, p, -1):
-  #                   # print g
-  #                   new_translated[g] = 1
-  #                   translation_order.append(g)
-
-  #                 # create a new hypothesis value given the current set of data
-  #                 new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, translation_order)
-
-
-  #                 words_translated = q - p + 1  # of words translated in this iteration
-  #                 total_translated = 0          # getting the total # of words translated
-
-  #                 for i in new_translated:
-  #                   total_translated = total_translated + i
-
-  #                 # add it to the current stack for the state if that state's stack is empty, or if the log prob is lower
-  #                 if current_lm_state not in stacks[total_translated] or stacks[total_translated][current_lm_state].logprob < logprob: # second case is recombination
-  #                   stacks[total_translated][current_lm_state] = new_hypothesis
   # # take the lowest absolute log prob value as our winner
   winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
 
   print extract_english(winner)
-
-########### Reordering ###########
-
-  # converting the translation back in order
-  # order = winner.order_trans
-
-  # print order
-
-  # store the future costs as a separate variable from logprob
-  # when sorting, add together
-  # when expanding hypothesis, recalculated future cost
-
-  # new_trans = ""
-
-  # min_el = 0
-
-  # for i in order:
-  #   for x in order:
-  #     if x[1][0] == min_el:
-  #       new_trans += str(x[0]) + " "
-  #       min_el = x[1][len(x[1])-1] + 1
-
-  # print new_trans
-
-
-  # # print order
-  # # # print len(extract_english(winner).split(" "))
-
-  # copy_trans = []
-  # new_trans = ["" for _ in extract_english(winner).split()]
-
-  # for z in winner.order_trans:
-  #   if z < len(extract_english(winner).split(" ")) - 1:
-  #     copy_trans.append(z)
-  # # print copy_trans
-
-  # words_arr = extract_english(winner).split()
-
-  # # print words_arr
-
-  # for i, y in enumerate(copy_trans):
-  #   # print i
-  #   # print y
-  #   new_trans[y] = words_arr[i]
-
-  # # # # print extract_english(winner).split(" ")
-  # # print new_trans
-
-  # newtrans_str = ""
-  # for v, w in enumerate(new_trans):
-  #   if v < len(new_trans):
-  #     newtrans_str += w + " "
-  #   else:
-  #     newtrans_str += w
-
-  # print newtrans_str
-
-########## Reordering ###########
-
-  # print len(extract_english(winner).split(" "))
   # such verbose
   if opts.verbose:
     def extract_tm_logprob(h):
@@ -316,4 +196,3 @@ for french_sentence in french:
       (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
 
   # for stack in stacks:
-  #   print stack
