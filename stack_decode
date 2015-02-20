@@ -2,6 +2,7 @@
 import optparse
 import sys
 import models
+import copy
 from collections import namedtuple
 
 optparser = optparse.OptionParser()
@@ -29,11 +30,6 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for french_sentence in french:
-
-  # print 'Length: ' + str(len(french_sentence))
-  # for i in range((len(french_sentence) - 1), 0, -1):
-  #   print i
-
   # The following code implements a monotone decoding
   # algorithm (one that doesn't permute the target phrases).
   # Hence all hypotheses in stacks[i] represent translations of
@@ -41,143 +37,158 @@ for french_sentence in french:
   # this so that they can represent translations of *any* i words.
 
   # create named tuple so its easier to deal with the values we are working on
-  hypothesis = namedtuple("hypothesis", "logprob, lm_state, translated, predecessor, phrase")
-  initial_hypothesis = hypothesis(0.0, lm.begin(), [False for _ in range(len(french_sentence) - 1, -1, -1)], None, None)
+  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, prev_translated, order_trans")
+  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, [0 for _ in range(len(french_sentence) - 1, -1, -1)], [])
 
-  print len(french_sentence)
+  # print len(french_sentence)
 
-  # initialize an array of dictionaries of size n [n = sentence length]
-  stacks = [{} for _ in french_sentence]
+  # initialize an array of dictionaries of size N+1 (where N is the number of tokens)
+  stacks = [{} for _ in french_sentence] + [{}]
 
-  # place empty hypothesis onto stack 0
+  # add a sentence start token as the initial hypothesis to start with
   stacks[0][lm.begin()] = initial_hypothesis
 
-  # for all stacks 0...n-1  do
-  for _, stack in enumerate(stacks):
+  # loop through all but the last stack in the array of stacks (so for each word)
+  for i, stack in enumerate(stacks[:-1]):
 
-    # for all hypotheses in stack do
-    for current_hypothesis in sorted(stack.itervalues(), key=lambda h: -h.logprob)[:opts.s]:
+    # print 'Iterating through stack #' + str(i)
 
-      # getting not translated positions
-      untranslated = []
+    # loop through stack dictionary contents, starting with the values with the lowest log probability
+    for current_hypothesis in sorted(stack.itervalues(),key=lambda h: -h.logprob)[:opts.s]: # prune
 
-      # running through positions in the sentence
-      for i in range(len(current_hypothesis.translated) - 1, -1, -1):
+      # print current_hypothesis
 
-        # if not translated
-        if not current_hypothesis.translated[i]:
+      # getting the array of previously untranslated positions
+      translated    = current_hypothesis.prev_translated
+      untranslated  = []
 
-          # add position to the list of untranslated positions
-          untranslated.append(i)
+      for l, k in enumerate(translated):
+        # print l
+        # print k
+        if k == 0:
+          untranslated.append(l)
 
-      # getting untranslated phrase groups
+      # print 'Untranslated tokens: ' + str(untranslated)
+
+      # getting the phrase groupings
+      group = []
       phrases = []
-      from itertools import groupby
-      from operator import itemgetter
-      for key, group in groupby(enumerate(untranslated), lambda (index, item): index - item):
-        group = map(itemgetter(1), group)
-        print group
-        if len(group) > 1:
-          phrases.append(xrange(group[0], group[-1]))
+      prev_index = 0
+      first_time = False
+      for n in untranslated:
+        if not first_time:
+          prev_index = n
+          group.append(n)
+          first_time = True
         else:
-          phrases.append(group[0])
+          if prev_index + 1 == n:
+            group.append(n)
+            prev_index = n
+          else:
+            phrases.append(group)
+            first_time = False
+      phrases.append(group)
 
-      print phrases
+      for subphrase in phrases:
+        for p in subphrase:
+          for q in subphrase:
+            if p <= q:
 
-      # for the remaining untranslated words or phrases
-      for j in phrases:
+              # if the current range of words exists in our translation model
+              if french_sentence[p:q + 1] in tm:
 
-        # if its a phrase
-        if not isinstance(j, int):
+                # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
+                for phrase in tm[french_sentence[p:q + 1]]:
 
-          # for every word position in the phrase
-          for l in j:
+                  # print 'The phrase: ' + str(phrase) + 'comes between indices: ' + str(p) + ' and ' + str(q)
 
-            # for every other word position in the phrase
-            for m in j:
-
-              # number of words tranlsted in this iteration
-              numWords = l - m + 1
-
-              # number of words translated in previous iteration
-              numTranslated = 0
-              for p in current_hypothesis.translated:
-                if current_hypothesis.translated[p]:
-                  numTranslated += 1
-
-              # is the resulting subset phrase in the translation model?
-              if french_sentence[l:m] in tm:
-
-                # for each of the translations in the translation model:
-                for phrase in tm[french_sentence[l:m]]:
-
-                  # add the logprob for this phrase to that of the current hypothesis
+                  # add the logprob for this phrase to the logprob of the current hypothesis
                   logprob = current_hypothesis.logprob + phrase.logprob
 
-                  # get the current state of the language model
+                  # extract the current state of the language model
                   current_lm_state = current_hypothesis.lm_state
+                  translation_order = copy.deepcopy(current_hypothesis.order_trans)
+                  new_translated = copy.deepcopy(translated)
 
-                  # for word in phrase.english.split():
-                  #   (current_lm_state,word_logprob) = lm.score(current_lm_state, wor)
-                  #   logprob += word_logprob
+                  # find the log prob of each word in the phrase, given the current language models state
+                  # then add the logprob into the logprob tally for this phrase
+                  for word in phrase.english.split():
 
-                  # adding the probability that it's the end of the sentence
-                  logprob += lm.end(current_lm_state) if l == len(french_sentence) else 0.0
+                    (current_lm_state, word_logprob) = lm.score(current_lm_state, word)
+                    logprob += word_logprob
 
-                  # getting the array of words in the french sentence that are translated
-                  new_translated = current_hypothesis.translated;
+                  # add the log prob that this is the end of the sentence (once we hit the end)
+                  logprob += lm.end(current_lm_state) if q == len(french_sentence) else 0.0
 
-                  # altering newly translated words' state in array
-                  for n in range(m, l, -1):
-                    new_translated[n] = True
+                  new_translated = copy.deepcopy(translated)
 
-                  # creating a new hypothesis
-                  new_hypothesis = hypothesis(logprob, current_lm_state, new_translated, current_hypothesis, phrase)
+                  for g in range(p, q + 1, 1):
+                    # print g
+                    new_translated[g] = 1
+                    translation_order.append(g)
 
-                  # add hypothesis to the stack that represents the number of words translated
-                  if current_lm_state not in stacks[numTranslated + numWords] or stacks[j][current_lm_state].logprob < logprob:
-                    stacks[numTranslated + numWords][current_lm_state] = new_hypothesis
+                  # print translation_order
 
-
-        # if its a singleton word
-        else:
-          print j
+                  # create a new hypothesis value given the current set of data
+                  new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase, new_translated, translation_order)
 
 
-    #       # not really looping over phrases here in the k=1 case, this line is akin to phrase = tm[french_sentence[i:j]]
-    #       for phrase in tm[french_sentence[i:j]]:
+                  words_translated = q - p + 1  # of words translated in this iteration
+                  total_translated = 0          # getting the total # of words translated
 
-    #         # add the logprob for this phrase to the logprob of the current hypothesis
-    #         logprob = current_hypothesis.logprob + phrase.logprob
+                  for i in new_translated:
+                    total_translated = total_translated + i
 
-    #         # extract the current state of the language model
-    #         current_lm_state = current_hypothesis.lm_state
+                  # add it to the current stack for the state if that state's stack is empty, or if the log prob is lower
+                  if current_lm_state not in stacks[total_translated] or stacks[total_translated][current_lm_state].logprob < logprob: # second case is recombination
+                    stacks[total_translated][current_lm_state] = new_hypothesis
+  # take the lowest absolute log prob value as our winner
+  winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
 
-    #         # find the log prob of each word in the phrase, given the current language models state
-    #         # then add the logprob into the logprob tally for this phrase
-    #         for word in phrase.english.split():
-    #           (current_lm_state, word_logprob) = lm.score(current_lm_state, word)
-    #           logprob += word_logprob
+########### Reordering ###########
 
-    #         # add the log prob that this is the end of the sentence (once we hit the end)
-    #         logprob += lm.end(current_lm_state) if j == len(french_sentence) else 0.0
+  # converting the translation back in order
+  order = winner.order_trans
 
-    #         # create a new hypothesis value given the current set of data
-    #         new_hypothesis = hypothesis(logprob, current_lm_state, current_hypothesis, phrase)
+  # print order
+  # # print len(extract_english(winner).split(" "))
 
-    #         # add it to the current stack for the state if that state's stack is empty, or if the log prob is lower
-    #         if current_lm_state not in stacks[j] or stacks[j][current_lm_state].logprob < logprob: # second case is recombination
-    #           stacks[j][current_lm_state] = new_hypothesis
+  copy_trans = []
+  new_trans = ["" for _ in extract_english(winner).split()]
 
-  # take the lowest absolute log prob value as our winnar
-  # winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+  for z in winner.order_trans:
+    if z < len(extract_english(winner).split(" ")) - 1:
+      copy_trans.append(z)
+  # print copy_trans
 
-  # print extract_english(winner)
+  words_arr = extract_english(winner).split()
 
-  # # such verbose
-  # if opts.verbose:
-  #   def extract_tm_logprob(h):
-  #     return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
-  #   tm_logprob = extract_tm_logprob(winner)
-  #   sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
-  #     (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+  # print words_arr
+
+  for i, y in enumerate(copy_trans):
+    # print i
+    # print y
+    new_trans[y] = words_arr[i]
+
+  # # # print extract_english(winner).split(" ")
+  # print new_trans
+
+  newtrans_str = ""
+  for v, w in enumerate(new_trans):
+    if v < len(new_trans):
+      newtrans_str += w + " "
+    else:
+      newtrans_str += w
+
+  print newtrans_str
+
+########## Reordering ###########
+
+  # print len(extract_english(winner).split(" "))
+  # such verbose
+  if opts.verbose:
+    def extract_tm_logprob(h):
+      return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+    tm_logprob = extract_tm_logprob(winner)
+    sys.stderr.write("LM = %f, TM = %f, Total = %f\n" %
+      (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
